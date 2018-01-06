@@ -42,17 +42,9 @@ function Bird(id, x, y, vx, vy, r, g, b) {
     // The inherent triangle shape, before any rotations or translations
     this.baseTriangle = [
         // X, Y, Z
-         0.00,  0.05, 0.00,
-        -0.03, -0.05, 0.00,
-         0.03, -0.05, 0.00
-    ];
-
-    // debug
-    this.baseTriangle_alt = [
-        // X, Y, Z          R, G, B
-        0.0, 0.5, 0.0,      1.0, 0.0, 1.0,
-        -0.3, -0.5, 0.0,     1.0, 1.0, 0.0,
-        0.3, -0.5, 0.0,    0.0, 1.0, 1.0
+        0.05, 0.00, 0.00,
+        -0.05, 0.03, 0.00,
+        -0.05, -0.03, 0.00,
     ];
 
     // The rotated triangle
@@ -62,15 +54,25 @@ function Bird(id, x, y, vx, vy, r, g, b) {
 
     this.update = function(vb) {
         // // Update position and velocity based on simulation
-        this.x += vx;
-        this.y += vy;
+        this.x += this.vx;
+        this.y += this.vy;
+
+        this.vx = Math.cos(performance.now()/1000) / 100;
+        this.vy = Math.sin(performance.now()/1000) / 100;
 
         // // Update angle to match unit vector of velocity
-        this.angle = Math.atan(this.vx / this.vy); // radians
-        console.log(this.angle)
+        this.angle = Math.atan(this.vy / this.vx); // radians
+        if (this.vx < 0) {
+            this.angle += Math.PI; // for when arctan negatives cancel out
+        }
+        // this.angle = Math.random() * 2 * Math.PI;
+        // this.angle = 0;
 
         // // Update vertex coordinates to match current position and angle
-        mat3.rotate(this.rotatedTriangle, this.baseTriangle, this.angle);
+        var rotator = [];
+        mat3.fromRotation(rotator, this.angle)
+        mat3.mul(this.rotatedTriangle, rotator, this.baseTriangle);
+        // mat3.rotate(this.rotatedTriangle, this.baseTriangle, this.angle);
         mat3.add(this.vertexCoords, this.rotatedTriangle,
             [   this.x, this.y, 0.0,
                 this.x, this.y, 0.0,
@@ -82,7 +84,7 @@ function Bird(id, x, y, vx, vy, r, g, b) {
             bufi = (this.id * 18) + (i_vert * 6)
             vb[bufi + 0] = this.vertexCoords[i_vert * 3 + 0]; // X
             vb[bufi + 1] = this.vertexCoords[i_vert * 3 + 1]; // Y
-            vb[bufi + 2] = this.vertexCoords[i_vert * 3 + 2]; // Z
+            vb[bufi + 2] = 0; // Z
 
             vb[bufi + 3] = this.r;
             vb[bufi + 4] = this.g;
@@ -168,7 +170,7 @@ var InitDemo = function() {
     for (var i = 0; i < n_birds; i++) {
         bird_i = new Bird(i,
         2*Math.random()-1, 2*Math.random()-1, // x, y
-        0.00, 0.05, // vx, vy
+        0.00, 0.005, // vx, vy
         Math.random(), Math.random(), Math.random()) // r, g, b
 
         // Initialize 3 vertices at 0 (each bird's update function will overwrite)
@@ -240,6 +242,19 @@ var InitDemo = function() {
     gl.useProgram(program);
 
     // TODO: Loop
-    // gl.drawArrays(gl.TRIANGLES, 0, 3);
-    gl.drawElements(gl.TRIANGLES, birdIndices.length, gl.UNSIGNED_SHORT, 0);
+    var loop = function() {
+        gl.clearColor(0.1, 0.1, 0.1, 1.0);
+        gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+
+        for (var i = 0; i < n_birds; i++) {
+            allBirds[i].update(birdVertices);
+        }
+        gl.bindBuffer(gl.ARRAY_BUFFER, vertexBufferObject);
+        gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(birdVertices), gl.STATIC_DRAW);
+        // console.log('Frame at', performance.now());
+        gl.drawElements(gl.TRIANGLES, birdIndices.length, gl.UNSIGNED_SHORT, 0);
+
+        requestAnimationFrame(loop);
+    }
+    requestAnimationFrame(loop);
 };
