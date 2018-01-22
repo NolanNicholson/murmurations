@@ -39,12 +39,30 @@ function Bird(id, x, y, vx, vy, r, g, b) {
     // Angle
     this.angle = 0; // will overwrite during update
 
+    // Sight distance as a proportion of the whole view plane (1 or more = all birds)
+    this.sightDistance = 0.1;
+    // Repulsive distance to prevent birds from clumping
+    this.repulsiveDistance = 0.02;
+    this.repulsiveAngularAccel = 0.05;
+
+    // Social force. 1 corresponds to directly matching neighbors; any more will be divergent!
+    // Not currently used - see this.socialAngularAccel
+    // this.socialForce = 0.01;
+    // Fixed velocity for angular acceleration
+    this.fixedVelocity = 0.01;
+    this.socialAngularAccel = 0.005;
+    // Parameters for keeping in bounds
+    this.returnHomeBorder = 0.6;
+    this.returnHomeSpring = 0.006;
+
+    this.angleDiff = 0;
+
     // The inherent triangle shape, before any rotations or translations
     this.baseTriangle = [
         // X, Y, Z
-        0.05, 0.00, 0.00,
-        -0.05, 0.03, 0.00,
-        -0.05, -0.03, 0.00,
+        0.02, 0.00, 0.00,
+        -0.02, 0.01, 0.00,
+        -0.02, -0.01, 0.00,
     ];
 
     // The rotated triangle
@@ -52,13 +70,94 @@ function Bird(id, x, y, vx, vy, r, g, b) {
     // The final triangle shape that gets uploaded to the buffer
     this.vertexCoords = [];
 
-    this.update = function(vb) {
+    this.updateBehavior = function(allBirds) {
         // // Update position and velocity based on simulation
         this.x += this.vx;
         this.y += this.vy;
 
-        this.vx = Math.cos(performance.now()/1000) / 100;
-        this.vy = Math.sin(performance.now()/1000) / 100;
+        // 
+        // Update scheme using velocities
+        // 
+
+        // // If the birds leave home, they should come back
+        // if (Math.abs(this.x) > 0.9) {
+        //     this.vx -= this.x / 10000;
+        // }
+        // if (Math.abs(this.y) > 1) {
+        //     this.vy -= this.y / 1000;
+        // }
+        // for(var i = 0; i < allBirds.length; i++) {
+        //     other = allBirds[i];
+        //     if (this != other
+        //         && Math.abs(this.x - other.x) < this.sightDistance
+        //         && Math.abs(this.y - other.y) < this.sightDistance) {
+        //             this.vx += (other.vx - this.vx) * this.socialForce;
+        //             this.vy += (other.vy - this.vy) * this.socialForce;
+        //     }
+        // }
+
+        // 
+        // Update scheme using angles
+        // 
+
+
+        for(var i = 0; i < allBirds.length; i++) {
+            other = allBirds[i];
+            if (this != other
+                && Math.abs(this.x - other.x) < this.sightDistance
+                && Math.abs(this.y - other.y) < this.sightDistance) {
+                    this.angleDiff = (other.angle - this.angle);
+                    if (this.angleDiff < -180) {
+                        this.angleDiff += 360; 
+                    }
+                    if (Math.sqrt((this.x - other.x)**2 + (this.y - other.y)**2) < this.repulsiveDistance) {
+                        // Repulsive force - angle away from the other bird
+                        this.angle -= this.angleDiff * this.repulsiveAngularAccel;
+                    } else {
+                        // Social force - align angle with the other bird
+                        this.angle += this.angleDiff * this.socialAngularAccel;
+                    }
+                    
+            }
+        }
+
+        this.vx = this.fixedVelocity * Math.cos(this.angle);
+        this.vy = this.fixedVelocity * Math.sin(this.angle);
+
+        // If the birds leave home, they should come back
+        // Square version (not being used)
+        // if (Math.abs(this.x) > this.returnHomeBorder) {
+        //     this.vx -= (Math.abs(this.x) - this.returnHomeBorder) * this.returnHomeSpring * this.x / Math.abs(this.x);
+        // }
+        // if (Math.abs(this.y) > this.returnHomeBorder) {
+        //     this.vy -= (Math.abs(this.y) - this.returnHomeBorder) * this.returnHomeSpring * this.y / Math.abs(this.y);
+        // }
+
+        // Radial version
+        if (Math.sqrt(this.x*this.x + this.y*this.y) > this.returnHomeBorder) {
+            var magnitude = (Math.sqrt(this.x*this.x + this.y*this.y) - this.returnHomeBorder) * this.returnHomeSpring;
+            var direction = Math.atan(this.y / this.x);
+            if (this.x < 0) {
+                direction += Math.PI;
+            }
+            this.vx -= magnitude * Math.cos(direction);
+            this.vy -= magnitude * Math.sin(direction);
+        } 
+
+        // // Strong gravity
+        // this.vx += - (this.x) / 1000
+        // this.vy += - (this.y) / 1000
+
+        // Weak gravity - orbit
+        // this.vx += - (this.x) / 10000
+        // this.vy += - (this.y) / 10000
+
+    };
+
+    this.updateDisplay = function(vb) {
+        // Fly around in circles
+        // this.vx = Math.cos(performance.now()/1000) / 100;
+        // this.vy = Math.sin(performance.now()/1000) / 100;
 
         // // Update angle to match unit vector of velocity
         this.angle = Math.atan(this.vy / this.vx); // radians
@@ -77,6 +176,16 @@ function Bird(id, x, y, vx, vy, r, g, b) {
             [   this.x, this.y, 0.0,
                 this.x, this.y, 0.0,
                 this.x, this.y, 0.0]);
+
+        // // Let's have some color updating fun - red and blue
+        this.b = Math.abs(this.vx) * 100;
+        this.g = 0;
+        this.r = Math.abs(this.vy) * 100;
+
+        // Let's have some color updating fun - brown and white
+        // this.r = (Math.abs(this.vx) * 100);
+        // this.g = 1 - (Math.abs(this.vy) * 100);
+        // this.b = 1 - (Math.abs(this.vy) * 100);
 
         // Update vertex buffer with current vertex coordinates
         for (var i_vert = 0; i_vert < 3; i_vert++) {
@@ -170,7 +279,7 @@ var InitDemo = function() {
     for (var i = 0; i < n_birds; i++) {
         bird_i = new Bird(i,
         2*Math.random()-1, 2*Math.random()-1, // x, y
-        0.00, 0.005, // vx, vy
+        0.02*Math.random()-0.01, 0.02*Math.random()-0.01, // vx, vy
         Math.random(), Math.random(), Math.random()) // r, g, b
 
         // Initialize 3 vertices at 0 (each bird's update function will overwrite)
@@ -182,29 +291,16 @@ var InitDemo = function() {
         birdIndices.push(i*3, i*3 + 1, i*3 + 2);
 
         allBirds.push(bird_i);
-        bird_i.update(birdVertices);
+        bird_i.angle = Math.random() * 2 * Math.PI
+        bird_i.updateBehavior(allBirds);
+        bird_i.updateDisplay(birdVertices);
 
     } 
-
-    // var birdVertices = [
-    //     // X, Y, Z          R, G, B
-    //     0.0, 0.5, 0.0,      1.0, 0.0, 1.0,
-    //     -0.3, -0.5, 0.0,     1.0, 1.0, 0.0,
-    //     0.3, -0.5, 0.0,    0.0, 1.0, 1.0
-    // ];
-
-    // var birdIndices = [
-    //     0, 1, 2
-    // ];
 
     // debug globalization
     birdVert = birdVertices;
     birdInd = birdIndices;
     ctx = gl;
-
-    // I get the feeling that the bufferData and new Float32Array calls below
-    // are expensive. How can I update the position data without creating a new
-    // array every single time?
 
     var vertexBufferObject = gl.createBuffer();
     gl.bindBuffer(gl.ARRAY_BUFFER, vertexBufferObject);
@@ -241,13 +337,17 @@ var InitDemo = function() {
     // Tell OpenGL state machine which program should be active
     gl.useProgram(program);
 
-    // TODO: Loop
+    // Note: I get the feeling that the bufferData and new Float32Array calls below
+    // are expensive. How can I update the position data without creating a new
+    // array every single time?
+
     var loop = function() {
         gl.clearColor(0.1, 0.1, 0.1, 1.0);
         gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
 
         for (var i = 0; i < n_birds; i++) {
-            allBirds[i].update(birdVertices);
+            allBirds[i].updateBehavior(allBirds);
+            allBirds[i].updateDisplay(birdVertices);
         }
         gl.bindBuffer(gl.ARRAY_BUFFER, vertexBufferObject);
         gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(birdVertices), gl.STATIC_DRAW);
